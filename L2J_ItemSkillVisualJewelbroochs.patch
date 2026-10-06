@@ -1,5 +1,3 @@
-### Eclipse Workspace Patch 1.0
-#P L2J_Mobius_14.1_SamuraiCrow
 diff --git dist/game/data/stats/armorsets/Sets.xml dist/game/data/stats/armorsets/Sets.xml
 index 2069ba1..9bcefae 100644
 --- dist/game/data/stats/armorsets/Sets.xml

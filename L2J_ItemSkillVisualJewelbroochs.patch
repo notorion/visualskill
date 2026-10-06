@@ -1,0 +1,125 @@
+### Eclipse Workspace Patch 1.0
+#P L2J_Mobius_14.1_SamuraiCrow
+diff --git dist/game/data/stats/armorsets/Sets.xml dist/game/data/stats/armorsets/Sets.xml
+index 2069ba1..9bcefae 100644
+--- dist/game/data/stats/armorsets/Sets.xml
++++ dist/game/data/stats/armorsets/Sets.xml
+@@ -8556,7 +8556,7 @@
+ 			<skill id="27717" level="5" minimumPieces="5" /> <!-- Greater Jewel's Blessing -->
+ 			<skill id="27717" level="6" minimumPieces="6" /> <!-- Greater Jewel's Blessing -->
+-			<skill id="27721" level="1" minimumPieces="3" /> <!-- Lv.1 La Vie En Rose's Energy -->
+-			<skill id="27722" level="1" minimumPieces="4" /> <!-- Lv.2 La Vie En Rose's Energy -->
+-			<skill id="27723" level="1" minimumPieces="5" /> <!-- Lv.3 La Vie En Rose's Energy -->
++			<skill id="27721" level="1" minimumPieces="3" maximumPieces="3" /> <!-- Lv.1 La Vie En Rose's Energy -->
++			<skill id="27722" level="1" minimumPieces="4" maximumPieces="4" /> <!-- Lv.2 La Vie En Rose's Energy -->
++			<skill id="27723" level="1" minimumPieces="5" maximumPieces="5" /> <!-- Lv.3 La Vie En Rose's Energy -->
+ 			<skill id="27724" level="1" minimumPieces="6" /> <!-- Lv.4 La Vie En Rose's Energy -->
+ 		</skills>
+diff --git dist/game/data/xsd/armorSets.xsd dist/game/data/xsd/armorSets.xsd
+index 59da1ac..0e05c0c 100644
+--- dist/game/data/xsd/armorSets.xsd
++++ dist/game/data/xsd/armorSets.xsd
+@@ -36,4 +36,5 @@
+ 												<xs:attribute type="xs:byte" name="level" use="required" />
+ 												<xs:attribute type="xs:byte" name="minimumPieces" use="optional" />
++												<xs:attribute type="xs:byte" name="maximumPieces" use="optional" />
+ 												<xs:attribute type="xs:byte" name="minimumEnchant" use="optional" />
+ 												<xs:attribute type="xs:boolean" name="optional" use="optional" />
+diff --git java/org/l2jmobius/gameserver/data/xml/ArmorSetData.java java/org/l2jmobius/gameserver/data/xml/ArmorSetData.java
+index ce353e5..8ca8dda 100644
+--- java/org/l2jmobius/gameserver/data/xml/ArmorSetData.java
++++ java/org/l2jmobius/gameserver/data/xml/ArmorSetData.java
+@@ -148,9 +148,10 @@
+ 										final int skillLevel = parseInteger(attrs, "level");
+ 										final int minPieces = parseInteger(attrs, "minimumPieces", minimumPieces);
++										final int maxPieces = parseInteger(attrs, "maximumPieces", 0);
+ 										final int minEnchant = parseInteger(attrs, "minimumEnchant", 0);
+ 										final boolean isOptional = parseBoolean(attrs, "optional", false);
+ 										final int artifactSlotMask = parseInteger(attrs, "slotMask", 0);
+ 										final int artifactBookSlot = parseInteger(attrs, "bookSlot", 0);
+-										skills.add(new ArmorsetSkillHolder(skillId, skillLevel, minPieces, minEnchant, isOptional, artifactSlotMask, artifactBookSlot));
++										skills.add(new ArmorsetSkillHolder(skillId, skillLevel, minPieces, maxPieces, minEnchant, isOptional, artifactSlotMask, artifactBookSlot));
+ 									});
+ 									break;
+diff --git java/org/l2jmobius/gameserver/entity/item/holders/ArmorsetSkillHolder.java java/org/l2jmobius/gameserver/entity/item/holders/ArmorsetSkillHolder.java
+index 4c81c57..3ab9f60 100644
+--- java/org/l2jmobius/gameserver/entity/item/holders/ArmorsetSkillHolder.java
++++ java/org/l2jmobius/gameserver/entity/item/holders/ArmorsetSkillHolder.java
+@@ -30,4 +30,5 @@
+ {
+ 	private final int _minimumPieces;
++	private final int _maximumPieces;
+ 	private final int _minEnchant;
+ 	private final int _artifactSlotMask;
+@@ -37,6 +38,12 @@
+ 	public ArmorsetSkillHolder(int skillId, int skillLevel, int minimumPieces, int minEnchant, boolean isOptional, int artifactSlotMask, int artifactBookSlot)
+ 	{
++		this(skillId, skillLevel, minimumPieces, 0, minEnchant, isOptional, artifactSlotMask, artifactBookSlot);
++	}
++	
++	public ArmorsetSkillHolder(int skillId, int skillLevel, int minimumPieces, int maximumPieces, int minEnchant, boolean isOptional, int artifactSlotMask, int artifactBookSlot)
++	{
+ 		super(skillId, skillLevel);
+ 		_minimumPieces = minimumPieces;
++		_maximumPieces = maximumPieces;
+ 		_minEnchant = minEnchant;
+ 		_isOptional = isOptional;
+@@ -50,4 +57,9 @@
+ 	}
+ 	
++	public int getMaximumPieces()
++	{
++		return _maximumPieces;
++	}
++	
+ 	public int getMinEnchant()
+ 	{
+@@ -68,6 +80,14 @@
+ 		}
+ 		
++		final long pieceCount = armorSet.getPieceCount(player, idProvider);
++		
+ 		// Player doesn't have enough items equipped to use this skill
+-		if (_minimumPieces > armorSet.getPieceCount(player, idProvider))
++		if (_minimumPieces > pieceCount)
++		{
++			return false;
++		}
++		
++		// Player has more items equipped than allowed for this skill tier
++		if ((_maximumPieces > 0) && (pieceCount > _maximumPieces))
+ 		{
+ 			return false;
+@@ -86,10 +106,4 @@
+ 		}
+ 		
+-		// Player already knows that skill
+-		if (player.getSkillLevel(getSkillId()) == getSkillLevel())
+-		{
+-			return false;
+-		}
+-		
+ 		return true;
+ 	}
+diff --git java/org/l2jmobius/gameserver/entity/itemcontainer/Inventory.java java/org/l2jmobius/gameserver/entity/itemcontainer/Inventory.java
+index d221393..a025bf6 100644
+--- java/org/l2jmobius/gameserver/entity/itemcontainer/Inventory.java
++++ java/org/l2jmobius/gameserver/entity/itemcontainer/Inventory.java
+@@ -861,4 +861,17 @@
+ 			for (ArmorSet armorSet : armorSets)
+ 			{
++				// Remove skills that no longer match conditions (e.g. exceeded maximumPieces).
++				for (ArmorsetSkillHolder holder : armorSet.getSkills())
++				{
++					if (!holder.validateConditions(player, armorSet, idProvider))
++					{
++						final Skill itemSkill = holder.getSkill();
++						if ((itemSkill != null) && (player.removeSkill(itemSkill, false, itemSkill.isPassive()) != null))
++						{
++							update = true;
++						}
++					}
++				}
++				
+ 				if (applySkills(player, item, armorSet, idProvider))
+ 				{
